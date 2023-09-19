@@ -1,0 +1,188 @@
+.Dd $Mdocdate: September 19 2023 $
+.Dt BRAW 3
+.Os
+.Sh NAME
+.Nm braw
+.Nd raw/cooked terminal handling package
+.Sh SYNOPSIS
+.In braw.h
+.Ft "braw_t *"
+.Fn braw_create void
+.Ft int
+.Fn braw_get_terminal_state "braw_t *bp"
+.Ft int
+.Fn braw_enable_raw_mode "braw_t *bp"
+.Ft int
+.Fn braw_disable_raw_mode "braw_t *bp"
+.Ft int
+.Fn braw_get_char "unsigned char *c" "double timeout"
+.Ft int
+.Fn braw_put_char "unsigned char c"
+.Sh DESCRIPTION
+The
+.Sy braw
+library routines are used to record the state of a terminal, switch it between raw and cooked modes, and read and write characters.
+This library is used by the
+.Sy braw
+Racket library, but might be useful to some on its own.
+Most will be better served using a combination of
+.In termios.h
+and
+.In unistd.h
+included with
+.Sy libc .
+
+A program using these routines must be linked with the
+.Sy -lbraw
+option.
+
+The
+.Vt braw_t
+type provided by this library is used to store a snapshot of the original terminal state.
+This snapshot is used as a reference when
+.Fn braw_enable_raw_mode
+is called, and must then be provided to
+.Fn braw_disable_raw_mode
+to return the terminal to its original state.
+
+.Fn braw_create
+allocates memory for a
+.Vt braw_t
+pointer.
+The caller must check that the pointer is valid, and manually
+.Fn free
+the pointer when they are done with it.
+
+.Fn braw_get_terminal_state
+stores the current state of the terminal in the
+.Vt braw_t
+pointer
+.Va bp .
+Use this to create a snapshot of the original state of the terminal.
+
+.Fn braw_enable_raw_mode
+uses the
+.Vt braw_t
+pointer
+.Va bp
+as a reference to put the terminal into raw mode.
+
+.Fn braw_disable_raw_mode
+uses the
+.Vt braw_t
+pointer
+.Va bp
+as a reference to return the terminal to cooked mode.
+
+.Fn braw_get_char
+sets the out parameter
+.Va c
+to a single character read from the terminal.
+.Va timeout
+is a double holding the number of seconds
+.Fn braw_get_char
+will block while waiting for a character from the terminal.
+If
+.Va timeout
+is a negative number
+.Fn braw_get_char
+will block indefinitely until it reads a character.
+If
+.Va timeout
+is 0.0 it will return immediately.
+
+.Fn braw_put_char
+sends a character
+.Va c
+to the terminal.
+
+The following constants are used as return values by most functions provided by this library:
+.Dv "BRAW_SUCCESS" ,
+.Dv "BRAW_FAILURE" , and
+.Dv "BRAW_TIMEOUT" .
+.Ed
+.Sh RETURN VALUES
+.Fn braw_create
+returns an allocated
+.Vt braw_t
+pointer.
+The caller must check that the returned pointer is not NULL.
+
+.Fn braw_get_char
+returns
+.Dv BRAW_SUCCESS
+if it was able to get a character within the timeout.
+It returns
+.Dv BRAW_TIMEOUT
+if it ran out of time, and
+.Dv BRAW_FAILURE
+otherwise.
+
+All other functions return
+.Dv BRAW_SUCCESS
+if they were successful, and
+.Dv BRAW_FAILURE
+if there are issues handling or allocating memory for pointers.
+.Sh EXAMPLES
+.Bd -literal -offset indent
+/*
+ * put the terminal into raw mode, read an input character and
+ * immediately write it to the terminal, then exit raw mode
+ */
+
+#include <braw.h>
+#include <stdio.h>
+
+int main()
+{
+    braw_t *bp = braw_create();
+
+    if (!bp)
+        return EXIT_FAILURE;
+
+    if (braw_get_terminal_state(bp) != BRAW_SUCCESS) {
+        free(bp);
+        return EXIT_FAILURE;
+    }
+
+    if (braw_enable_raw_mode(bp) != BRAW_SUCCESS) {
+        free(bp);
+        return EXIT_FAILURE;
+    }
+
+    unsigned char c;
+
+    if (braw_get_char(&c, -1.0) == BRAW_SUCCESS) {
+        if (braw_put_char(c) != BRAW_SUCCESS) {
+            fprintf(stderr, "Unable to write character to terminal\\n");
+            free(bp);
+            return EXIT_FAILURE;
+        }
+    }
+
+    /*
+     * if you have insured that bp is valid this should never fail.
+     * if it does, the terminal will be stuck in raw mode and must
+     * be manually reset
+     */
+    if (braw_disable_raw_mode(bp) != BRAW_SUCCESS) {
+        free(bp);
+        return EXIT_FAILURE;
+    }
+
+    free(bp);
+    return EXIT_SUCCESS;
+}
+.Ed
+.Sh SEE ALSO
+.Xr stty 1 ,
+.Xr cfmakeraw 3 ,
+.Xr tcgetattr 3 ,
+.Xr tcsetattr 3 ,
+.Xr termios 4
+.Ed
+.Sh AUTHORS
+The
+.Sy braw
+reference was written by Jen Mojallali
+.Mt jam@z80.computer .
